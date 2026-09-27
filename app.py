@@ -166,7 +166,7 @@ with tab2:
         # Графік залежності маси від вакууму для контролю
         if len(st.session_state.vlab_data) > 1:
             fig, ax = plt.subplots(figsize=(6, 3.5))
-            vv = [row["Вакуум V (%)"] for row in st.session_state.vlab_data]
+            vv = [row["Вакуум V (%)"] if "Вакуум V (%)" in row else row.get("Вакуум V (%)", 0) for row in st.session_state.vlab_data]
             mm = [row["Маса балона m (г)"] for row in st.session_state.vlab_data]
             ax.scatter(vv, mm, color='darkblue', s=40, label="Точки з журналу")
             ax.set_xlabel("Вакуум V (%)")
