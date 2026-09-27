@@ -35,7 +35,8 @@ with tab1:
 with tab2:
     st.subheader("Віртуальний стенд відкачування газу")
     
-    col1, col2 = st.columns()
+    col1, col2 = st.columns(2)  # Теперь всё будет работать правильно
+
     
     with col1:
         st.write("### Налаштування установки")
