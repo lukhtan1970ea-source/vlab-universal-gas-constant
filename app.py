@@ -42,7 +42,7 @@ with col2:
     instruments_placeholder = st.empty()
 
 with col1:
-    st.write("### ⚙️ Геометричні та зовнішні編раметри")
+    st.write("### ⚙️ Геометричні та зовнішні параметри")
     V_liters = st.slider("Об'єм балона (V), л", 5.0, 20.0, 10.0, step=0.5)
     T_celsius = st.slider("Температура повітря (t), °C", 18.0, 28.0, 22.0, step=0.5)
     
