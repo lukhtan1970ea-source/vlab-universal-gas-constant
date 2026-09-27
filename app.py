@@ -34,8 +34,15 @@ st.subheader("🖥️ Інтерактивний лабораторний сте
 
 col1, col2 = st.columns(2)
 
+# Права колонка з приладами повинна оголошуватися раніше або мати плейсхолдери, 
+# щоб ми могли міняти там цифри під час циклу в col1.
+with col2:
+    st.write("### 📺 Показання приладів у лабораторії")
+    # Створюємо динамічний контейнер для інтерактивних екранів приладів
+    instruments_placeholder = st.empty()
+
 with col1:
-    st.write("### ⚙️ Геометричні та зовнішні параметри")
+    st.write("### ⚙️ Геометричні та зовнішні編раметри")
     V_liters = st.slider("Об'єм балона (V), л", 5.0, 20.0, 10.0, step=0.5)
     T_celsius = st.slider("Температура повітря (t), °C", 18.0, 28.0, 22.0, step=0.5)
     
@@ -61,7 +68,6 @@ with col1:
         st.session_state.random_seed = int(time.time() * 1000) % 100000
         np.random.seed(st.session_state.random_seed)
         
-        # Перераховуємо параметри для нового сиду
         m_glass_true = 450.0 + np.random.uniform(10.0, 80.0)
         P_atm_true = 101325 + np.random.normal(0, 150)
         
@@ -75,28 +81,38 @@ with col1:
     st.write("---")
     st.write("### 🕹️ Керування установкою")
     
-    # --- КРОК 1 ---
+    # --- КРОК 1: ВІДКАЧУВАННЯ ---
     st.write("**Крок 1: Попереднє відкачування повітря з колби**")
     btn_pump = st.button("🚀 УВІМКНУТИ ВАКУУМНИЙ НАСОС", disabled=(st.session_state.stage != "init"))
     
     if btn_pump:
         st.session_state.stage = "pumping"
-        steps = 50 
+        steps = 50  # 50 кроків по 0.1 сек = 5 секунд реального часу
         progress_bar = st.progress(0)
-        metric_placeholder = st.empty()
         
         for i in range(1, steps + 1):
             time.sleep(0.10)
             factor = i / float(steps)
+            
+            # Розрахунок поточного динамічного вакууму та маси
             st.session_state.vacuum_curr = max_vacuum_possible * (1 - np.exp(-3 * factor)) / (1 - np.exp(-3))
             p_dynamic = P_atm_true * (1 - st.session_state.vacuum_curr / 100.0)
             m_air_dynamic = (p_dynamic * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
             st.session_state.m_curr = m_glass_true + m_air_dynamic * 1000.0 + np.random.normal(0, 0.001)
+            
+            # Оновлюємо прогрес-бар
             progress_bar.progress(int(factor * 100))
-            with metric_placeholder:
-                st.caption(f"💨 Робота насоса... Вакуум: {st.session_state.vacuum_curr:.1f}%, Маса: {st.session_state.m_curr:.3f} г")
+            
+            # Оновлюємо цифри на табло ПРЯМО ПІД ЧАС ЦИКЛУ
+            with instruments_placeholder.container():
+                m_col, v_col = st.columns(2)
+                with m_col:
+                    st.metric(label="⚖️ Електронні ваги (m)", value=f"{st.session_state.m_curr:.3f} г")
+                with v_col:
+                    st.metric(label="📉 Вакуумметр (V_%)", value=f"{st.session_state.vacuum_curr:.1f} %")
+                st.info(f"🏛️ **Барометр на стіні ($P_{{атм}}$):** {P_atm_true:.0f} Па")
+                st.caption(f"🌡️ **Кімнатний термометр (T):** {T_kelvin:.2f} К ({T_celsius} °C)")
         
-        metric_placeholder.empty()
         st.session_state.stage = "ready_to_fill"
         st.session_state.vlab_data.append({
             "№ досліду": 1,
@@ -105,7 +121,7 @@ with col1:
         })
         st.rerun()
 
-    # --- КРОК 2 ---
+    # --- КРОК 2: НАПУСК ---
     st.write(" ")
     st.write("**Крок 2: Дослідження (Напуск повітря порціями)**")
     st.caption("Впускайте повітря невеликими порціями, щоразу фіксуючи масу та вакуум, аж поки система не повернеться до атмосферного тиску (0% вакууму).")
@@ -120,7 +136,6 @@ with col1:
         if next_vacuum <= 0.0:
             next_vacuum = 0.0
             st.session_state.stage = "finished"
-            # Фізичне коригування: повертаємо точну початкову масу атмосфери
             st.session_state.m_curr = st.session_state.m_start
             st.toast("Система повернулася до атмосферного тиску! Напуск завершено.", icon="🎉")
         else:
@@ -138,9 +153,8 @@ with col1:
         })
         st.rerun()
 
-with col2:
-    st.write("### 📺 Показання приладів у лабораторії")
-    
+# Статичне (фінальне) відображення приладів та журналу після/до циклів
+with instruments_placeholder.container():
     m_col, v_col = st.columns(2)
     with m_col:
         st.metric(label="⚖️ Електронні ваги (m)", value=f"{st.session_state.m_curr:.3f} г")
@@ -149,7 +163,9 @@ with col2:
         
     st.info(f"🏛️ **Барометр на стіні ($P_{{атм}}$):** {P_atm_true:.0f} Па")
     st.caption(f"🌡️ **Кімнатний термометр (T):** {T_kelvin:.2f} К ({T_celsius} °C)")
-    
+
+# Журнал та графік під приладами
+with col2:
     st.write("### 📝 Лабораторний журнал студента")
     if len(st.session_state.vlab_data) == 0:
         st.info("Журнал порожній. Увімкніть насос на 5 секунд, щоб почати вимірювання.")
