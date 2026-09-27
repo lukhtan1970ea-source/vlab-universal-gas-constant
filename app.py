@@ -22,6 +22,8 @@ if "vacuum_curr" not in st.session_state:
     st.session_state.vacuum_curr = 0.0  # Поточний вакуум у %
 if "m_curr" not in st.session_state:
     st.session_state.m_curr = None
+if "m_start" not in st.session_state:
+    st.session_state.m_start = None  # Еталонна початкова маса
 if "random_seed" not in st.session_state:
     st.session_state.random_seed = int(time.time() * 1000) % 100000
 
@@ -49,17 +51,25 @@ with col1:
     if st.session_state.m_curr is None:
         st.session_state.vacuum_curr = 0.0
         m_air_start = (P_atm_true * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
-        st.session_state.m_curr = m_glass_true + m_air_start * 1000.0
+        st.session_state.m_start = m_glass_true + m_air_start * 1000.0
+        st.session_state.m_curr = st.session_state.m_start
         st.session_state.vlab_data = []
         st.session_state.stage = "init"
 
     if st.button("🔄 Скинути стенд до початкового стану"):
         st.session_state.vacuum_curr = 0.0
+        st.session_state.random_seed = int(time.time() * 1000) % 100000
+        np.random.seed(st.session_state.random_seed)
+        
+        # Перераховуємо параметри для нового сиду
+        m_glass_true = 450.0 + np.random.uniform(10.0, 80.0)
+        P_atm_true = 101325 + np.random.normal(0, 150)
+        
         m_air_start = (P_atm_true * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
-        st.session_state.m_curr = m_glass_true + m_air_start * 1000.0
+        st.session_state.m_start = m_glass_true + m_air_start * 1000.0
+        st.session_state.m_curr = st.session_state.m_start
         st.session_state.vlab_data = []
         st.session_state.stage = "init"
-        st.session_state.random_seed = int(time.time() * 1000) % 100000
         st.rerun()
 
     st.write("---")
@@ -81,7 +91,7 @@ with col1:
             st.session_state.vacuum_curr = max_vacuum_possible * (1 - np.exp(-3 * factor)) / (1 - np.exp(-3))
             p_dynamic = P_atm_true * (1 - st.session_state.vacuum_curr / 100.0)
             m_air_dynamic = (p_dynamic * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
-            st.session_state.m_curr = m_glass_true + m_air_dynamic * 1000.0 + np.random.normal(0, 0.002)
+            st.session_state.m_curr = m_glass_true + m_air_dynamic * 1000.0 + np.random.normal(0, 0.001)
             progress_bar.progress(int(factor * 100))
             with metric_placeholder:
                 st.caption(f"💨 Робота насоса... Вакуум: {st.session_state.vacuum_curr:.1f}%, Маса: {st.session_state.m_curr:.3f} г")
@@ -110,20 +120,21 @@ with col1:
         if next_vacuum <= 0.0:
             next_vacuum = 0.0
             st.session_state.stage = "finished"
+            # Фізичне коригування: повертаємо точну початкову масу атмосфери
+            st.session_state.m_curr = st.session_state.m_start
             st.toast("Система повернулася до атмосферного тиску! Напуск завершено.", icon="🎉")
-            
-        p_dynamic = P_atm_true * (1 - next_vacuum / 100.0)
-        next_m_air = (p_dynamic * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
-        next_m = m_glass_true + next_m_air * 1000.0 + np.random.normal(0, 0.002)
+        else:
+            p_dynamic = P_atm_true * (1 - next_vacuum / 100.0)
+            next_m_air = (p_dynamic * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
+            st.session_state.m_curr = m_glass_true + next_m_air * 1000.0 + np.random.normal(0, 0.001)
         
         st.session_state.vacuum_curr = next_vacuum
-        st.session_state.m_curr = next_m
         
         next_num = len(st.session_state.vlab_data) + 1
         st.session_state.vlab_data.append({
             "№ досліду": next_num,
             "Вакуум V (%)": round(next_vacuum, 1),
-            "Маса балона m (г)": round(next_m, 3)
+            "Маса балона m (г)": round(st.session_state.m_curr, 3)
         })
         st.rerun()
 
