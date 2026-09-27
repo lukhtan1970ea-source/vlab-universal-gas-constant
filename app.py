@@ -11,150 +11,208 @@ M_AIR = 29.0e-3  # Молярна маса повітря, кг/моль
 st.set_page_config(page_title="Лабораторна робота: Визначення R", layout="wide")
 
 st.title("🔬 Віртуальна лабораторна робота")
-st.header("Определение універсальної газової сталої методом відкачування")
+st.header("Визначення універсальної газової сталої методом екстраполяції")
 
-# Ініціалізація стану стенду (Session State), щоб реалізувати динаміку приладів
-if "pump_started" not in st.session_state:
-    st.session_state.pump_started = False
-if "current_pressure" not in st.session_state:
-    st.session_state.current_pressure = 101325.0
-if "current_mass" not in st.session_state:
-    st.session_state.current_mass = 512.20
-if "p1" not in st.session_state:
-    st.session_state.p1 = None
-if "m1" not in st.session_state:
-    st.session_state.m1 = None
+# Ініціалізація змінних сесії (Session State)
+if "stage" not in st.session_state:
+    st.session_state.stage = "init"  # Можливі стани: init, pumping, ready_to_fill, finished
+if "vlab_data" not in st.session_state:
+    st.session_state.vlab_data = []
+if "p_curr" not in st.session_state:
+    st.session_state.p_curr = None
+if "m_curr" not in st.session_state:
+    st.session_state.m_curr = None
 
-tab1, tab2, tab3 = st.tabs(["📚 Теорія та метод", "🛠️ Експериментальний стенд", "📊 Перевірка розрахунків"])
+tab1, tab2, tab3 = st.tabs(["📚 Методика експерименту", "🛠️ Експериментальний стенд", "📊 Перевірка результатів"])
 
 with tab1:
-    st.subheader("Метод дослідження")
+    st.subheader("Метод екстраполяції для визначення маси повітря")
     st.markdown("""
-    Метод ґрунтується на вимірюванні маси повітря, видаленого з посудини відомого об'єму, та викликаної цим зміни тиску.
+    Визначити точну масу повітря в балоні прямим зважуванням неможливо, оскільки ваги завжди показують сумарну масу балона та повітря в ньому:
+    $$m_{виміряна} = m_{скла} + m_{повітря}$$
     
-    Якщо з балона об'ємом $V$ відкачати частину повітря, то зв'язок між зміною тиску $\\Delta P$ та зміною маси $\\Delta m$ за сталої температури $T$ описується рівнянням Менделєєва-Клапейрона:
-    $$\\Delta P \\cdot V = \\frac{\\Delta m}{M} \\cdot R \\cdot T$$
-    
-    Звідси розрахункова формула для універсальної газової сталої:
-    $$R = \\frac{\\Delta P \\cdot V \\cdot M}{\\Delta m \\cdot T}$$
+    Для вирішення цієї проблеми мы використовуємо **метод екстраполяції**:
+    1. З балона максимально відкачують повітря за допомогою вакуумного насоса (створюють глибоке розрідження).
+    2. Після досягнення мінімального тиску насос вимикають, а у балон **порціями впускають повітря**, щоразу вимірюючи тиск $P$ та загальну масу $m$.
+    3. Оскільки маса повітря лінійно залежить від тиску ($m_{повітря} = \\frac{M \\cdot V}{R \\cdot T} \\cdot P$), загальна маса балона описується рівнянням прямої лінії:
+    $$m(P) = m_{скла} + \\left(\\frac{M \\cdot V}{R \\cdot T}\\right) \\cdot P$$
+    4. Побудувавши графік залежності $m$ від $P$ і продовживши (екстраполювавши) пряму до точки **$P = 0$**, ми знаходимо точку перетину з віссю мас. Це значення і є **масою порожнього балона без повітря ($m_{скла}$)**.
+    5. Знаючи $m_{скла}$, можна легко знайти масу повітря при атмосферному тиску: $\\Delta m = m_{атм} - m_{скла}$, і розрахувати універсальну газову сталу:
+    $$R = \\frac{P_{атм} \\cdot V \\cdot M}{\\Delta m \\cdot T}$$
     """)
 
 with tab2:
-    st.subheader("🖥️ Панель керування та віртуальні прилади")
+    st.subheader("🖥️ Інтерактивний лабораторний стенд")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.write("### ⚙️ Параметри установки")
+        st.write("### ⚙️ Початкові налаштування")
         seed = st.number_input("Номер вашого варіанта (ID):", min_value=1, max_value=100, value=1)
         np.random.seed(seed)
         
-        # Конструкційні параметри
         V_liters = st.slider("Об'єм балона (V), л", 5.0, 20.0, 10.0, step=0.5)
-        T_celsius = st.slider("Температура в лабораторії (t), °C", 18.0, 28.0, 22.0, step=0.5)
+        T_celsius = st.slider("Температура повітря (t), °C", 18.0, 28.0, 22.0, step=0.5)
         
         V_m3 = V_liters / 1000.0
         T_kelvin = T_celsius + 273.15
         
-        # Генеруємо початкові стабільні значення для конкретного варіанта
-        P_start = 101325 + np.random.normal(0, 150)
-        m_start = (P_start * V_m3 * M_AIR) / (R_TRUE * T_kelvin) + 500.0 # 500г - вага балона
+        # Справжні "приховані" параметри для цього варіанта
+        m_glass_true = 450.0 + np.random.uniform(10.0, 80.0) # Маса скла
+        P_atm_true = 101325 + np.random.normal(0, 150) # Атмосферний тиск
+        P_min_vacuum = 2000.0 + np.random.uniform(0, 1000) # Граничний вакуум насоса
         
-        st.write("---")
-        st.write("### 🕹️ Керування експериментом")
-        
-        # Крок 1: Зафіксувати початковий стан
-        if st.button("📌 Зафіксувати початковий стан (P1, m1)"):
-            st.session_state.p1 = P_start
-            st.session_state.m1 = m_start + np.random.normal(0, 0.01) # похибка вагів
-            st.session_state.current_pressure = P_start
-            st.session_state.current_mass = st.session_state.m1
-            st.success("Дані P1 та m1 успішно зафіксовані в журналі!")
+        # Ініціалізація початкового атмосферного стану системи
+        if st.session_state.p_curr is None or st.button("🔄 Скинути стенд до початкового стану"):
+            st.session_state.p_curr = P_atm_true
+            m_air_start = (P_atm_true * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
+            st.session_state.m_curr = m_glass_true + m_air_start * 1000.0
+            st.session_state.vlab_data = []
+            st.session_state.stage = "init"
 
-        # Крок 2: Ввімкнення насоса
-        pump_depth = st.slider("Встановити потужність відкачування (%)", 20, 70, 45)
+        st.write("---")
+        st.write("### 🕹️ Керування установкою")
         
-        if st.button("🚀 УВІМКНУТИ ВАКУУМНИЙ НАСОС"):
-            if st.session_state.p1 is None:
-                st.error("Спочатку зафіксуйте початковий стан (натисніть кнопку вище)!")
-            else:
-                st.session_state.pump_started = True
+        # Етап 1: Відкачування
+        st.write("**Крок 1: Попереднє відкачування повітря з колби**")
+        btn_pump = st.button("🚀 УВІМКНУТИ ВАКУУМНИЙ НАСОС", disabled=(st.session_state.stage != "init"))
+        
+        if btn_pump:
+            st.session_state.stage = "pumping"
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # Анімація процесу відкачування
+            steps = 15
+            for i in range(1, steps + 1):
+                time.sleep(0.15)
+                factor = i / float(steps)
+                # Експоненціальне падіння тиску
+                st.session_state.p_curr = P_atm_true - (P_atm_true - P_min_vacuum) * (1 - np.exp(-3 * factor)) / (1 - np.exp(-3))
+                m_air_dynamic = (st.session_state.p_curr * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
+                st.session_state.m_curr = m_glass_true + m_air_dynamic * 1000.0 + np.random.normal(0, 0.002)
                 
-                # Симуляція динамічного процесу відкачування (анімація приладів)
-                P_target = st.session_state.p1 * (1 - pump_depth / 100.0)
-                m_target = (P_target * V_m3 * M_AIR) / (R_TRUE * T_kelvin) + 500.0
+                progress_bar.progress(int(factor * 100))
+                status_text.text(f"Відкачування... Поточний тиск: {st.session_state.p_curr:.0f} Па")
+            
+            st.session_state.stage = "ready_to_fill"
+            # Автоматично заносимо першу точку (максимальний вакуум)
+            st.session_state.vlab_data.append({
+                "№ досліду": 1,
+                "Тиск P (Па)": round(st.session_state.p_curr),
+                "Маса балона m (г)": round(st.session_state.m_curr, 3)
+            })
+            st.rerun()
+        # Етап 2: Напуск порціями
+        st.write("**Крок 2: Дослідження (Напуск повітря порціями)**")
+        st.caption("Впускайте повітря невеликими порціями, щоразу фіксуючи масу та тиск, аж поки система не повернеться до атмосферного тиску.")
+        
+        is_fill_disabled = (st.session_state.stage != "ready_to_fill" and st.session_state.stage != "finished")
+        btn_fill = st.button("📥 Впустити порцію повітря (відкрити клапан)", disabled=is_fill_disabled)
+        
+        if btn_fill:
+            p_step = np.random.uniform(12000, 16000)
+            next_P = st.session_state.p_curr + p_step
+            
+            if next_P >= P_atm_true:
+                next_P = P_atm_true
+                st.session_state.stage = "finished"
+                st.toast("Тиск зрівнявся з атмосферним! Експеримент завершено.", icon="🎉")
                 
-                # Створюємо ефект "роботи" насоса (кілька кроків оновлення екрану)
-                progress_bar = st.progress(0)
-                for i in range(1, 11):
-                    time.sleep(0.2)  # Пауза для ілюзії реального часу
-                    factor = i / 10.0
-                    st.session_state.current_pressure = st.session_state.p1 - (st.session_state.p1 - P_target) * factor + np.random.normal(0, 50)
-                    st.session_state.current_mass = st.session_state.m1 - (st.session_state.m1 - m_target) * factor + np.random.normal(0, 0.005)
-                    progress_bar.progress(i * 10)
-                
-                st.success("Відкачування завершено! Клапан перекритий. Система стабільна.")
+            next_m_air = (next_P * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
+            next_m = m_glass_true + next_m_air * 1000.0 + np.random.normal(0, 0.002)
+            
+            st.session_state.p_curr = next_P
+            st.session_state.m_curr = next_m
+            
+            next_num = len(st.session_state.vlab_data) + 1
+            st.session_state.vlab_data.append({
+                "№ досліду": next_num,
+                "Тиск P (Па)": round(next_P),
+                "Маса балона m (г)": round(next_m, 3)
+            })
 
     with col2:
-        st.write("### 📺 Візуалізація віртуальних приладів")
+        st.write("### 📺 Показання цифрових приладів")
         
-        # Візуальні блоки під прилади (використовуємо st.metric як цифрові табло)
-        metric_col1, metric_col2 = st.columns(2)
-        
-        with metric_col1:
-            st.markdown("#### 📟 ЦИФРОВИЙ МАНОМЕТР")
-            st.metric(
-                label="Поточний тиск у балоні (P)", 
-                value=f"{st.session_state.current_pressure:.0f} Па",
-                delta=f"{(st.session_state.current_pressure - 101325):.0f} Па від атмосфери"
-            )
+        m_col, p_col = st.columns(2)
+        with m_col:
+            st.metric(label="⚖️ Електронні ваги (m)", value=f"{st.session_state.m_curr:.3f} г")
+        with p_col:
+            st.metric(label="📟 Цифровий манометр (P)", value=f"{st.session_state.p_curr:.0f} Па")
             
-        with metric_col2:
-            st.markdown("#### ⚖️ ЕЛЕКТРОННІ ВАГИ")
-            st.metric(
-                label="Загальна маса балона (m)", 
-                value=f"{st.session_state.current_mass:.2f} г"
-            )
-            
-        st.info(f"🌡️ **Термометр навколишнього середовища:** {T_kelvin:.2f} К ({T_celsius}°C)")
+        st.caption(f"🌡️ **Термометр у лабораторії (T):** {T_kelvin:.2f} К")
         
-        # Лабораторний журнал студента
-        st.write("---")
-        st.write("### 📝 Ваш лабораторний журнал")
-        
-        p1_val = f"{st.session_state.p1:.0f} Па" if st.session_state.p1 else "Не зафіксовано"
-        m1_val = f"{st.session_state.m1:.2f} г" if st.session_state.m1 else "Не зафіксовано"
-        
-        p2_val = f"{st.session_state.current_pressure:.0f} Па" if st.session_state.pump_started else "Очікування відкачування"
-        m2_val = f"{st.session_state.current_mass:.2f} г" if st.session_state.pump_started else "Очікування відкачування"
-        
-        journal_data = {
-            "Параметр": ["Температура (T)", "Початковий тиск (P1)", "Кінцевий тиск (P2)", "Початкова маса (m1)", "Кінцева маса (m2)"],
-            "Значення": [f"{T_kelvin:.2f} К", p1_val, p2_val, m1_val, m2_val]
-        }
-        st.table(pd.DataFrame(journal_data))
+        st.write("### 📝 Лабораторний журнал студента")
+        if len(st.session_state.vlab_data) == 0:
+            st.info("Журнал порожній. Увімкніть насос, щоб почати вимірювання.")
+        else:
+            df_display = pd.DataFrame(st.session_state.vlab_data)
+            st.dataframe(df_display, use_container_width=True)
+
+        # Графік точок вимірювання
+        if len(st.session_state.vlab_data) > 1:
+            fig, ax = plt.subplots(figsize=(6, 3.5))
+            pp = [row["Тиск P (Па)"] for row in st.session_state.vlab_data]
+            mm = [row["Маса балона m (г)"] for row in st.session_state.vlab_data]
+            ax.scatter(pp, mm, color='darkblue', s=40, label="Точки з журналу")
+            ax.set_xlabel("Тиск P (Па)")
+            ax.set_ylabel("Маса m (г)")
+            ax.grid(True, alpha=0.3)
+            st.pyplot(fig)
 
 with tab3:
-    st.subheader("📊 Модуль автоматичної перевірки звіту")
-    st.write("Обчисліть різниці тисків і мас за формулою та введіть отримане значення експериментальної газової сталої.")
+    st.subheader("📊 Перевірка результатів обробки даних")
+    st.write("Виконайте графічну екстраполяцію отриманої прямої до значення $P = 0$ та розрахуйте константи.")
     
-    student_R = st.number_input("Введіть ваше розраховане значення R (Дж/(моль·К)):", min_value=0.0, max_value=20.0, value=8.0, step=0.001)
-    
-    if st.button("Надіслати на перевірку"):
-        if st.session_state.p1 is None or not st.session_state.pump_started:
-            st.error("Ви не провели експеримент у вкладці 'Експериментальний стенд'!")
+    col_inp1, col_inp2 = st.columns(2)
+    with col_inp1:
+        student_m_glass = st.number_input("1. Знайдена маса порожньої колби m_скла (г):", min_value=0.0, max_value=1000.0, value=500.0, step=0.001)
+    with col_inp2:
+        student_R = st.number_input("2. Розраховане значення R (Дж/(моль·К)):", min_value=0.0, max_value=20.0, value=8.0, step=0.001)
+        
+    if st.button("Надіслати звіт на перевірку"):
+        if len(st.session_state.vlab_data) < 5:
+            st.error("❌ Недостатньо вимірювань для точної екстраполяції. Проведіть дослід до кінця (6-8 точок)!")
         else:
-            delta_P = st.session_state.p1 - st.session_state.current_pressure
-            delta_m = (st.session_state.m1 - st.session_state.current_mass) / 1000.0 # в кг
+            # МНК розрахунок для перевірки
+            pp_arr = np.array([row["Тиск P (Па)"] for row in st.session_state.vlab_data])
+            mm_arr = np.array([row["Маса балона m (г)"] for row in st.session_state.vlab_data])
             
-            # Істинне розрахункове значення для конкретного зашумленого досвіду студента
-            R_calc = (delta_P * V_m3 * M_AIR) / (delta_m * T_kelvin)
-            rel_error = abs(student_R - R_calc) / R_calc * 100
+            slope, intercept = np.polyfit(pp_arr, mm_arr, 1)
             
-            if rel_error < 1.5:
+            P_atm_measured = pp_arr[-1]
+            m_atm_measured = mm_arr[-1]
+            
+            delta_m_calc = (m_atm_measured - intercept) / 1000.0 # в кг
+            R_calc = (P_atm_measured * V_m3 * M_AIR) / (delta_m_calc * T_kelvin)
+            
+            error_m = abs(student_m_glass - intercept)
+            error_R = abs(student_R - R_calc) / R_calc * 100
+            
+            st.write("### 📉 Result:")
+            
+            # Графік перевірки МНК з екстраполяцією
+            fig_check, ax_check = plt.subplots(figsize=(8, 4))
+            ax_check.scatter(pp_arr, mm_arr, color='darkblue', zorder=5, label="Ваші точки")
+            
+            p_line = np.linspace(0, P_atm_measured, 100)
+            m_line = slope * p_line + intercept
+            ax_check.plot(p_line, m_line, color='red', linestyle='--', label="Екстраполяція лінії до P=0")
+            ax_check.scatter(0, intercept, color='red', s=50, zorder=6, label=f"Істинне m_скла = {intercept:.3f} г")
+            
+            ax_check.set_xlim(-5000, P_atm_measured * 1.05)
+            ax_check.set_xlabel("Тиск P (Па)")
+            ax_check.set_ylabel("Маса m (г)")
+            ax_check.legend()
+            ax_check.grid(True, alpha=0.4)
+            st.pyplot(fig_check)
+            
+            # Вердикт системи
+            if error_m <= 0.05 and error_R < 2.0:
                 st.balloons()
-                st.success(f"🎉 Чудово! Розрахунок абсолютно точний. Відхилення від експерименту: {rel_error:.2f}%.")
-            elif rel_error < 5.0:
-                st.warning(f"Звіт прийнято, але є невелика арифметична похибка: {rel_error:.2f}%. Можливо, ви занадто сильно округлили значення Δm чи ΔP.")
+                st.success(f"🎉 **Чудово!** Маса колби визначена абсолютно правильно (відхилення {error_m:.3f} г). Значення R = {student_R} Дж/(моль·К) підтверджено!")
+            elif error_m > 0.05:
+                st.error(f"❌ **Помилка в масі колби!** Ваше значення відрізняється від правильної екстраполяції більш ніж на 0.05 г (50 мг). Перевірте побудову графіка в Excel/Origin.")
             else:
-                st.error(f"❌ Помилка занадто велика (відхилення {rel_error:.2f}%). Перевірте формулу: тиск має бути в Па, об'єм у м³, маса в кг!")
+                st.warning(f"⚠️ **Масу колби визначено правильно**, але фінальний розрахунок R має помилку {error_R:.2f}%. Перевірте формулу, переведення літрів у $м^3$ та грамів у кг.")
