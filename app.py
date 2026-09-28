@@ -236,15 +236,5 @@ with col2:
         df_display = pd.DataFrame(st.session_state.vlab_data)
         st.dataframe(df_display, use_container_width=True)
 
-    if len(st.session_state.vlab_data) > 1:
-        fig, ax = plt.subplots(figsize=(6, 3.5))
-        vv = [row["Вакуум V (%)"] for row in st.session_state.vlab_data]
-        mm = [row["Маса балона m (г)"] for row in st.session_state.vlab_data]
-        
-        ax.scatter(vv, mm, color='darkblue', s=40, label="Точки з журналу")
-        ax.set_xlabel("Вакуум V (%)")
-        ax.set_ylabel("Маса m (г)")
-        ax.invert_xaxis()  
-        ax.grid(True, alpha=0.3)
-        st.pyplot(fig)
+    
 
