@@ -101,7 +101,7 @@ with col1:
     btn_pump = st.button("🚀 УВІМКНУТИ ВАКУУМНИЙ НАСОС", disabled=(st.session_state.stage != "init"))
     
     if btn_pump:
-                play_audio("pump.mp3")
+        play_audio("pump.mp3")
         st.session_state.stage = "pumping"
         steps = 50  # 50 кроків по 0.1 сек = 5 секунд реального часу
         progress_bar = st.progress(0)
@@ -146,7 +146,7 @@ with col1:
     btn_fill = st.button("📥 Впустити порцію повітря (відкрити клапан)", disabled=is_fill_disabled)
     
     if btn_fill:
-                play_audio("hiss.mp3")
+        play_audio("hiss.mp3")
         vac_step = np.random.uniform(12.0, 16.0)
         next_vacuum = st.session_state.vacuum_curr - vac_step
         
