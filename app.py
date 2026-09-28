@@ -3,10 +3,25 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import time
+import base64
 
 # Константи
 R_TRUE = 8.314  # Дж/(моль*К)
 M_AIR = 29.0e-3  # Молярна маса повітря, кг/моль
+# Функція для прихованого відтворення аудіо
+def play_audio(file_path):
+    try:
+        with open(file_path, "rb") as f:
+            data = f.read()
+            b64 = base64.b64encode(data).decode()
+            md = f"""
+                <audio autoplay style="display:none;">
+                <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+                </audio>
+                """
+            st.markdown(md, unsafe_allow_html=True)
+    except FileNotFoundError:
+        pass  # Якщо файлів немає, лаба працює без звуку
 
 st.set_page_config(page_title="Лабораторна робота: Визначення R", layout="wide")
 
@@ -86,6 +101,7 @@ with col1:
     btn_pump = st.button("🚀 УВІМКНУТИ ВАКУУМНИЙ НАСОС", disabled=(st.session_state.stage != "init"))
     
     if btn_pump:
+                play_audio("pump.mp3")
         st.session_state.stage = "pumping"
         steps = 50  # 50 кроків по 0.1 сек = 5 секунд реального часу
         progress_bar = st.progress(0)
@@ -130,6 +146,7 @@ with col1:
     btn_fill = st.button("📥 Впустити порцію повітря (відкрити клапан)", disabled=is_fill_disabled)
     
     if btn_fill:
+                play_audio("hiss.mp3")
         vac_step = np.random.uniform(12.0, 16.0)
         next_vacuum = st.session_state.vacuum_curr - vac_step
         
