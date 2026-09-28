@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import time
-import base64
 
 # Константи
 R_TRUE = 8.314  # Дж/(моль*К)
@@ -13,54 +12,6 @@ st.set_page_config(page_title="Лабораторна робота: Визнач
 
 st.title("🔬 Віртуальна лабораторна робота")
 st.header("Визначення універсальної газової сталої методом екстраполяції")
-
-# Оптимальне зчитування аудіо з пам'яті (кешування)
-@st.cache_data
-def load_audio_b64(file_path):
-    try:
-        with open(file_path, "rb") as f:
-            return base64.b64encode(f.read()).decode()
-    except FileNotFoundError:
-        return None
-
-pump_b64 = load_audio_b64("pump.mp3")
-hiss_b64 = load_audio_b64("hiss.mp3")
-
-# Вбудовуємо аудіо-рушій на JavaScript ОДИН РАЗ на сторінку
-# Це дозволяє викликати звуки миттєво і без перезапусків плеєра
-js_audio_engine = f"""
-<script>
-    if (!window.audioPump) {{
-        window.audioPump = new Audio("data:audio/mp3;base64,{pump_b64 or ''}");
-        window.audioPump.loop = false;
-    }}
-    if (!window.audioHiss) {{
-        window.audioHiss = new Audio("data:audio/mp3;base64,{hiss_b64 or ''}");
-    }}
-    
-    window.playPump = function() {{
-        if (window.audioPump) {{
-            window.audioPump.currentTime = 0;
-            window.audioPump.play().catch(e => console.log("Audio block:", e));
-        }}
-    }}
-    
-    window.stopPump = function() {{
-        if (window.audioPump) {{
-            window.audioPump.pause();
-            window.audioPump.currentTime = 0;
-        }}
-    }}
-    
-    window.playHiss = function() {{
-        if (window.audioHiss) {{
-            window.audioHiss.currentTime = 0;
-            window.audioHiss.play().catch(e => console.log("Audio block:", e));
-        }}
-    }}
-</script>
-"""
-st.components.v1.html(js_audio_engine, height=0, width=0)
 
 # Ініціалізація змінних сесії (Session State)
 if "stage" not in st.session_state:
@@ -108,8 +59,6 @@ with col1:
         st.session_state.stage = "init"
 
     if st.button("🔄 Скинути стенд до початкового стану"):
-        # Зупиняємо насос через JS, якщо він гудів
-        st.components.v1.html("<script>window.stopPump();</script>", height=0, width=0)
         st.session_state.vacuum_curr = 0.0
         st.session_state.random_seed = int(time.time() * 1000) % 100000
         np.random.seed(st.session_state.random_seed)
@@ -129,14 +78,22 @@ with col1:
     
     # --- КРОК 1: ВІДКАЧУВАННЯ ---
     st.write("**Крок 1: Попереднє відкачування повітря з колби**")
+    
+    # Стандартний аудіоплеєр для насоса (показується тільки під час або після відкачування)
+    if st.session_state.stage == "pumping" or st.session_state.stage == "ready_to_fill":
+        try:
+            st.audio("pump.mp3", format="audio/mp3", autoplay=True)
+        except Exception:
+            pass
+
     btn_pump = st.button("🚀 УВІМКНУТИ ВАКУУМНИЙ НАСОС", disabled=(st.session_state.stage != "init"))
     
     if btn_pump:
         st.session_state.stage = "pumping"
-        
-        # Миттєвий запуск звуку через JavaScript тригер
-        st.components.v1.html("<script>window.playPump();</script>", height=0, width=0)
-        
+        st.rerun()  # Перезапускаємо, щоб спочатку змонтувати аудіоплеєр з autoplay=True
+
+    # Якщо ми в стані pumping, крутимо цикл анімації приладів
+    if st.session_state.stage == "pumping":
         steps = 50 
         progress_bar = st.progress(0)
         
@@ -160,9 +117,6 @@ with col1:
                 st.info(f"🏛️ **Барометр на стіні ($P_{{атм}}$):** {P_atm_true:.0f} Па")
                 st.caption(f"🌡️ **Кімнатний термометр (T):** {T_kelvin:.2f} К ({T_celsius} °C)")
         
-        # Вимикаємо звук насоса по закінченню 5 секунд
-        st.components.v1.html("<script>window.stopPump();</script>", height=0, width=0)
-        
         st.session_state.stage = "ready_to_fill"
         st.session_state.vlab_data.append({
             "№ досліду": 1,
@@ -180,9 +134,6 @@ with col1:
     btn_fill = st.button("📥 Впустити порцію повітря (відкрити клапан)", disabled=is_fill_disabled)
     
     if btn_fill:
-        # Миттєвий запуск "пшику" через JavaScript тригер при кожному кліку
-        st.components.v1.html("<script>window.playHiss();</script>", height=0, width=0)
-        
         vac_step = np.random.uniform(12.0, 16.0)
         next_vacuum = st.session_state.vacuum_curr - vac_step
         
@@ -204,17 +155,25 @@ with col1:
             "Вакуум V (%)": round(next_vacuum, 1),
             "Маса балона m (г)": round(st.session_state.m_curr, 3)
         })
+        
+        # Виводимо "пшик" один раз прямо в момент кліку на кнопку напуску
+        try:
+            st.audio("hiss.mp3", format="audio/mp3", autoplay=True)
+        except Exception:
+            pass
+            
         st.rerun()
 
-# Статичне відображення приладів
-with instruments_placeholder.container():
-    m_col, v_col = st.columns(2)
-    with m_col:
-        st.metric(label="⚖️ Електронні ваги (m)", value=f"{st.session_state.m_curr:.3f} г")
-    with v_col:
-        st.metric(label="📉 Вакуумметр (V_%)", value=f"{st.session_state.vacuum_curr:.1f} %")
-    st.info(f"🏛️ **Барометр на стіні ($P_{{атм}}$):** {P_atm_true:.0f} Па")
-    st.caption(f"🌡️ **Кімнатний термометр (T):** {T_kelvin:.2f} К ({T_celsius} °C)")
+# Статичне відображення приладів за відсутності активних циклів
+if st.session_state.stage != "pumping":
+    with instruments_placeholder.container():
+        m_col, v_col = st.columns(2)
+        with m_col:
+            st.metric(label="⚖️ Електронні ваги (m)", value=f"{st.session_state.m_curr:.3f} г")
+        with v_col:
+            st.metric(label="📉 Вакуумметр (V_%)", value=f"{st.session_state.vacuum_curr:.1f} %")
+        st.info(f"🏛️ **Барометр на стіні ($P_{{атм}}$):** {P_atm_true:.0f} Па")
+        st.caption(f"🌡️ **Кімнатний термометр (T):** {T_kelvin:.2f} К ({T_celsius} °C)")
 
 # Журнал та графік
 with col2:
