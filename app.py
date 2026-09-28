@@ -145,25 +145,26 @@ with col1:
         st.rerun()
 
     if st.session_state.stage == "pumping":
-        steps = 65  # 15 кроків розгону + 50 кроків анімації = 6.5 секунд загального часу
+        steps = 54  # 4 кроки розгону + 50 кроків анімації = 5.4 секунд загального часу
         progress_bar = st.progress(0)
         
         for i in range(1, steps + 1):
             time.sleep(0.10)
             
-            # Перші 15 кроків (1.5 секунди) насос ТІЛЬКИ ГУДЕ у браузері, стрілки на місці
-            if i <= 15:
+            # Лише перші 4 кроки (0.4 секунди) насос гуде, стрілки на місці
+            if i <= 4:
                 factor = 0.0
                 progress_bar.progress(0)
             else:
                 # Наступні 50 кроків (5 секунд) плавно знижуємо тиск
-                factor = (i - 15) / 50.0
+                factor = (i - 4) / 50.0
                 progress_bar.progress(int(factor * 100))
                 
                 st.session_state.vacuum_curr = max_vacuum_possible * (1 - np.exp(-3 * factor)) / (1 - np.exp(-3))
                 p_dynamic = P_atm_true * (1 - st.session_state.vacuum_curr / 100.0)
                 m_air_dynamic = (p_dynamic * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
                 st.session_state.m_curr = m_glass_true + m_air_dynamic * 1000.0 + np.random.normal(0, 0.001)
+
             
             # Оновлюємо табло приладів без стрибків екрана
             with instruments_placeholder.container():
