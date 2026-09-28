@@ -53,7 +53,7 @@ hiss_js_trigger = "true" if st.session_state.trigger_hiss_sound else "false"
 
 audio_html = f"""
 <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 5px solid #ff4b4b;">
-    <small>🔊 <b>Аудіо-супровід стенду:</b> Для активації звуків натисніть у будь-якому місці цієї плашки один раз після завантаження сторінки.</small>
+    <small>🔊 <b>Аудіо-супровід стенду:</b> Для активації звуків натисніть у будь-якому місці цієї сірої плашки один раз після завантаження сторінки.</small>
 </div>
 <script>
     if (!window.audioPumpObj) window.audioPumpObj = new Audio("data:audio/mp3;base64,{pump_b64 or ''}");
@@ -62,10 +62,11 @@ audio_html = f"""
     if ({pump_js_trigger} && window.audioPumpObj) {{
         window.audioPumpObj.currentTime = 0;
         window.audioPumpObj.play().catch(e => console.log(e));
+        // Насос працює сумарно 5.5 секунд (0.5с прогрів + 5с анімація)
         setTimeout(function() {{
             window.audioPumpObj.pause();
             window.audioPumpObj.currentTime = 0;
-        }}, 5000);
+        }}, 5500);
     }}
     if ({hiss_js_trigger} && window.audioHissObj) {{
         window.audioHissObj.currentTime = 0;
@@ -129,10 +130,13 @@ with col1:
     
     if btn_pump:
         st.session_state.stage = "pumping"
-        st.session_state.trigger_pump_sound = True  # Активуємо звук насоса
+        st.session_state.trigger_pump_sound = True  # Даємо команду на старт звуку
         st.rerun()
 
     if st.session_state.stage == "pumping":
+        # Психологічна пауза: 0.5 секунди гуде ТІЛЬКИ насос, стрілки ще не рушили
+        time.sleep(0.50)
+        
         steps = 50 
         progress_bar = st.progress(0)
         
@@ -173,7 +177,12 @@ with col1:
     btn_fill = st.button("📥 Впустити порцію повітря (відкрити клапан)", disabled=is_fill_disabled)
     
     if btn_fill:
-        st.session_state.trigger_hiss_sound = True  # Активуємо "пшик" клапана
+        st.session_state.trigger_hiss_sound = True  # Даємо команду на "пшик"
+        
+        # Психологічна пауза: спочатку чуємо чіткий "пшик", повітря залітає в колбу (0.4 сек)
+        # Це гарантує, що звук встигне програтися до перезапуску сторінки!
+        time.sleep(0.40)
+        
         vac_step = np.random.uniform(12.0, 16.0)
         next_vacuum = st.session_state.vacuum_curr - vac_step
         
