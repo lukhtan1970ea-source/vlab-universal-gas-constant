@@ -39,53 +39,38 @@ if "m_start" not in st.session_state:
     st.session_state.m_start = None  # Еталонна початкова маса
 if "random_seed" not in st.session_state:
     st.session_state.random_seed = int(time.time() * 1000) % 100000
-if "audio_on" not in st.session_state:
-    st.session_state.audio_on = False
-
 
 # Встановлюємо прихований сид для унікальності досвіду
 np.random.seed(st.session_state.random_seed)
 
 # --- АУДІО-РУШІЙ ТА ІН'ЄКЦІЯ В КНОПКИ ---
-# Перемикач аудіосупроводу в стилі Windows
-# Перемикач аудіосупроводу в стилі Windows (з виправленим рассинхроном)
-if "audio_on" not in st.session_state:
-    st.session_state.audio_on = False
-
-# Спочатку беремо актуальний стан, щоб іконка не відставала
-icon = "🔊" if st.session_state.audio_on else "🔇"
-
-# Використовуємо key="audio_on", щоб Streamlit оновлював стан синхронно
-st.toggle(
-    label=f"{icon} Звуковий супровід стенду", 
-    key="audio_on"
-)
-
-# Передаємо стан тумблера в JavaScript-рушій кнопок
-audio_is_active = "true" if st.session_state.audio_on else "false"
-
+# Цей скрипт прив'язує миттєвий звук прямо до подій натискання на кнопки на стороні браузера
 audio_html = f"""
+<div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 5px solid #ff4b4b;">
+    <small>🔊 <b>Аудіо-супровід стенду:</b> Для активації звуків натисніть у будь-якому місці цієї сірої плашки один раз після завантаження сторінки.</small>
+</div>
 <script>
     if (!window.audioPumpObj) window.audioPumpObj = new Audio("data:audio/mp3;base64,{pump_b64 or ''}");
     if (!window.audioHissObj) window.audioHissObj = new Audio("data:audio/mp3;base64,{hiss_b64 or ''}");
 
     window.clickPlayPump = function() {{
-        if ({audio_is_active} && window.audioPumpObj) {{
+        if (window.audioPumpObj) {{
             window.audioPumpObj.currentTime = 0;
             window.audioPumpObj.play().catch(e => console.log(e));
             setTimeout(function() {{
                 if(window.audioPumpObj) {{ window.audioPumpObj.pause(); window.audioPumpObj.currentTime = 0; }}
-            }}, 5400); // 0.4с розгін + 5с анімації
+            }}, 6500); // ГУДЕ 6.5 секунд (1.5с розгін + 5с анімація)
         }}
     }};
 
     window.clickPlayHiss = function() {{
-        if ({audio_is_active} && window.audioHissObj) {{
+        if (window.audioHissObj) {{
             window.audioHissObj.currentTime = 0;
             window.audioHissObj.play().catch(e => console.log(e));
         }}
     }};
 
+    // Функція пошуку кнопок Streamlit та додавання до них миттєвого звуку безпосередньо в браузері
     function ИньекцияЗвука() {{
         const buttons = window.parent.document.querySelectorAll("button");
         buttons.forEach(btn => {{
@@ -100,12 +85,12 @@ audio_html = f"""
             }}
         }});
     }}
+
+    // Запускаємо постійний моніторинг появи кнопок
     setInterval(ИньекцияЗвука, 300);
 </script>
 """
-st.components.v1.html(audio_html, height=0, width=0)
-
-
+st.components.v1.html(audio_html, height=65)
 
 st.subheader("🖥️ Інтерактивний лабораторний стенд")
 col1, col2 = st.columns(2)
@@ -160,26 +145,25 @@ with col1:
         st.rerun()
 
     if st.session_state.stage == "pumping":
-        steps = 54  # 4 кроки розгону + 50 кроків анімації = 5.4 секунд загального часу
+        steps = 65  # 15 кроків розгону + 50 кроків анімації = 6.5 секунд загального часу
         progress_bar = st.progress(0)
         
         for i in range(1, steps + 1):
             time.sleep(0.10)
             
-            # Лише перші 4 кроки (0.4 секунди) насос гуде, стрілки на місці
-            if i <= 4:
+            # Перші 15 кроків (1.5 секунди) насос ТІЛЬКИ ГУДЕ у браузері, стрілки на місці
+            if i <= 15:
                 factor = 0.0
                 progress_bar.progress(0)
             else:
                 # Наступні 50 кроків (5 секунд) плавно знижуємо тиск
-                factor = (i - 4) / 50.0
+                factor = (i - 15) / 50.0
                 progress_bar.progress(int(factor * 100))
                 
                 st.session_state.vacuum_curr = max_vacuum_possible * (1 - np.exp(-3 * factor)) / (1 - np.exp(-3))
                 p_dynamic = P_atm_true * (1 - st.session_state.vacuum_curr / 100.0)
                 m_air_dynamic = (p_dynamic * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
                 st.session_state.m_curr = m_glass_true + m_air_dynamic * 1000.0 + np.random.normal(0, 0.001)
-
             
             # Оновлюємо табло приладів без стрибків екрана
             with instruments_placeholder.container():
@@ -252,4 +236,5 @@ with col2:
         st.dataframe(df_display, use_container_width=True)
 
     
+
 
