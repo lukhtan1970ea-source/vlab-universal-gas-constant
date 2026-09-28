@@ -8,7 +8,13 @@ import base64
 # Константи
 R_TRUE = 8.314  # Дж/(моль*К)
 M_AIR = 29.0e-3  # Молярна маса повітря, кг/моль
-# Оптимальне зчитування аудіо з пам'яті (щоб прилади не гальмували)
+
+st.set_page_config(page_title="Лабораторна робота: Визначення R", layout="wide")
+
+st.title("🔬 Віртуальна лабораторна робота")
+st.header("Визначення універсальної газової сталої методом екстраполяції")
+
+# Оптимальне зчитування аудіо з пам'яті (кешування)
 @st.cache_data
 def load_audio_b64(file_path):
     try:
@@ -17,22 +23,9 @@ def load_audio_b64(file_path):
     except FileNotFoundError:
         return None
 
-# Функція для відтворення
-def play_audio(file_path):
-    b64 = load_audio_b64(file_path)
-    if b64:
-        md = f"""
-            <audio autoplay style="display:none;">
-            <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
-            </audio>
-            """
-        st.markdown(md, unsafe_allow_html=True)
-
-
-st.set_page_config(page_title="Лабораторна робота: Визначення R", layout="wide")
-
-st.title("🔬 Віртуальна лабораторна робота")
-st.header("Визначення універсальної газової сталої методом екстраполяції")
+# Отримуємо Base64 для обох звуків заздалегідь
+pump_b64 = load_audio_b64("pump.mp3")
+hiss_b64 = load_audio_b64("hiss.mp3")
 
 # Ініціалізація змінних сесії (Session State)
 if "stage" not in st.session_state:
@@ -47,6 +40,8 @@ if "m_start" not in st.session_state:
     st.session_state.m_start = None  # Еталонна початкова маса
 if "random_seed" not in st.session_state:
     st.session_state.random_seed = int(time.time() * 1000) % 100000
+if "play_hiss" not in st.session_state:
+    st.session_state.play_hiss = False
 
 # Встановлюємо прихований сид для унікальності досвіду
 np.random.seed(st.session_state.random_seed)
@@ -55,11 +50,8 @@ st.subheader("🖥️ Інтерактивний лабораторний сте
 
 col1, col2 = st.columns(2)
 
-# Права колонка з приладами повинна оголошуватися раніше або мати плейсхолдери, 
-# щоб ми могли міняти там цифри під час циклу в col1.
 with col2:
     st.write("### 📺 Показання приладів у лабораторії")
-    # Створюємо динамічний контейнер для інтерактивних екранів приладів
     instruments_placeholder = st.empty()
 
 with col1:
@@ -70,12 +62,10 @@ with col1:
     V_m3 = V_liters / 1000.0
     T_kelvin = T_celsius + 273.15
     
-    # Справжні приховані параметри стенду (залежать від прихованого сиду)
     m_glass_true = 450.0 + np.random.uniform(10.0, 80.0)  # Маса скла
     P_atm_true = 101325 + np.random.normal(0, 150)  # Атмосферний тиск
     max_vacuum_possible = 90.0  # Межа відкачування
     
-    # Ініціалізація початкового атмосферного стану системи
     if st.session_state.m_curr is None:
         st.session_state.vacuum_curr = 0.0
         m_air_start = (P_atm_true * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
@@ -97,6 +87,7 @@ with col1:
         st.session_state.m_curr = st.session_state.m_start
         st.session_state.vlab_data = []
         st.session_state.stage = "init"
+        st.session_state.play_hiss = False
         st.rerun()
 
     st.write("---")
@@ -107,32 +98,33 @@ with col1:
     btn_pump = st.button("🚀 УВІМКНУТИ ВАКУУМНИЙ НАСОС", disabled=(st.session_state.stage != "init"))
     
     if btn_pump:
-        play_audio("pump.mp3")
         st.session_state.stage = "pumping"
-        steps = 50  # 50 кроків по 0.1 сек = 5 секунд реального часу
+        
+        # Вбудовуємо плеєр насоса один раз. Він грає незалежно від циклу Python!
+        if pump_b64:
+            st.markdown(f'<audio autoplay><source src="data:audio/mp3;base64,{pump_b64}" type="audio/mp3"></audio>', unsafe_allow_html=True)
+        
+        steps = 50 
         progress_bar = st.progress(0)
         
         for i in range(1, steps + 1):
             time.sleep(0.10)
             factor = i / float(steps)
             
-            # Розрахунок поточного динамічного вакууму та маси
             st.session_state.vacuum_curr = max_vacuum_possible * (1 - np.exp(-3 * factor)) / (1 - np.exp(-3))
             p_dynamic = P_atm_true * (1 - st.session_state.vacuum_curr / 100.0)
             m_air_dynamic = (p_dynamic * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
             st.session_state.m_curr = m_glass_true + m_air_dynamic * 1000.0 + np.random.normal(0, 0.001)
             
-            # Оновлюємо прогрес-бар
             progress_bar.progress(int(factor * 100))
             
-            # Оновлюємо цифри на табло ПРЯМО ПІД ЧАС ЦИКЛУ
             with instruments_placeholder.container():
                 m_col, v_col = st.columns(2)
                 with m_col:
                     st.metric(label="⚖️ Електронні ваги (m)", value=f"{st.session_state.m_curr:.3f} г")
                 with v_col:
                     st.metric(label="📉 Вакуумметр (V_%)", value=f"{st.session_state.vacuum_curr:.1f} %")
-                st.info(f"🏛️ **Барометр на стіні ($P_{{атм}}$):** {P_atm_true:.0f} Па")
+                st.info(f"🏛️ **Барометр на стіні ($P_{{атм}}$):** {P_atm_true:.0f} Pa")
                 st.caption(f"🌡️ **Кімнатний термометр (T):** {T_kelvin:.2f} К ({T_celsius} °C)")
         
         st.session_state.stage = "ready_to_fill"
@@ -152,7 +144,7 @@ with col1:
     btn_fill = st.button("📥 Впустити порцію повітря (відкрити клапан)", disabled=is_fill_disabled)
     
     if btn_fill:
-        play_audio("hiss.mp3")
+        st.session_state.play_hiss = True  # Тригер для відтворення "пшику"
         vac_step = np.random.uniform(12.0, 16.0)
         next_vacuum = st.session_state.vacuum_curr - vac_step
         
@@ -176,18 +168,23 @@ with col1:
         })
         st.rerun()
 
-# Статичне (фінальне) відображення приладів та журналу після/до циклів
+# Одноразове програвання "пшику" повітря при оновленні сторінки
+if st.session_state.play_hiss:
+    if hiss_b64:
+        st.markdown(f'<audio autoplay><source src="data:audio/mp3;base64,{hiss_b64}" type="audio/mp3"></audio>', unsafe_allow_html=True)
+    st.session_state.play_hiss = False  # Скидаємо тригер
+
+# Відображення приладів
 with instruments_placeholder.container():
     m_col, v_col = st.columns(2)
     with m_col:
         st.metric(label="⚖️ Електронні ваги (m)", value=f"{st.session_state.m_curr:.3f} г")
     with v_col:
         st.metric(label="📉 Вакуумметр (V_%)", value=f"{st.session_state.vacuum_curr:.1f} %")
-        
     st.info(f"🏛️ **Барометр на стіні ($P_{{атм}}$):** {P_atm_true:.0f} Па")
     st.caption(f"🌡️ **Кімнатний термометр (T):** {T_kelvin:.2f} К ({T_celsius} °C)")
 
-# Журнал та графік під приладами
+# Журнал та графік
 with col2:
     st.write("### 📝 Лабораторний журнал студента")
     if len(st.session_state.vlab_data) == 0:
