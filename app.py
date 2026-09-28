@@ -23,9 +23,44 @@ def load_audio_b64(file_path):
     except FileNotFoundError:
         return None
 
-# Отримуємо Base64 для обох звуків заздалегідь
 pump_b64 = load_audio_b64("pump.mp3")
 hiss_b64 = load_audio_b64("hiss.mp3")
+
+# Вбудовуємо аудіо-рушій на JavaScript ОДИН РАЗ на сторінку
+# Це дозволяє викликати звуки миттєво і без перезапусків плеєра
+js_audio_engine = f"""
+<script>
+    if (!window.audioPump) {{
+        window.audioPump = new Audio("data:audio/mp3;base64,{pump_b64 or ''}");
+        window.audioPump.loop = false;
+    }}
+    if (!window.audioHiss) {{
+        window.audioHiss = new Audio("data:audio/mp3;base64,{hiss_b64 or ''}");
+    }}
+    
+    window.playPump = function() {{
+        if (window.audioPump) {{
+            window.audioPump.currentTime = 0;
+            window.audioPump.play().catch(e => console.log("Audio block:", e));
+        }}
+    }}
+    
+    window.stopPump = function() {{
+        if (window.audioPump) {{
+            window.audioPump.pause();
+            window.audioPump.currentTime = 0;
+        }}
+    }}
+    
+    window.playHiss = function() {{
+        if (window.audioHiss) {{
+            window.audioHiss.currentTime = 0;
+            window.audioHiss.play().catch(e => console.log("Audio block:", e));
+        }}
+    }}
+</script>
+"""
+st.components.v1.html(js_audio_engine, height=0, width=0)
 
 # Ініціалізація змінних сесії (Session State)
 if "stage" not in st.session_state:
@@ -40,8 +75,6 @@ if "m_start" not in st.session_state:
     st.session_state.m_start = None  # Еталонна початкова маса
 if "random_seed" not in st.session_state:
     st.session_state.random_seed = int(time.time() * 1000) % 100000
-if "play_hiss" not in st.session_state:
-    st.session_state.play_hiss = False
 
 # Встановлюємо прихований сид для унікальності досвіду
 np.random.seed(st.session_state.random_seed)
@@ -75,6 +108,8 @@ with col1:
         st.session_state.stage = "init"
 
     if st.button("🔄 Скинути стенд до початкового стану"):
+        # Зупиняємо насос через JS, якщо він гудів
+        st.components.v1.html("<script>window.stopPump();</script>", height=0, width=0)
         st.session_state.vacuum_curr = 0.0
         st.session_state.random_seed = int(time.time() * 1000) % 100000
         np.random.seed(st.session_state.random_seed)
@@ -87,7 +122,6 @@ with col1:
         st.session_state.m_curr = st.session_state.m_start
         st.session_state.vlab_data = []
         st.session_state.stage = "init"
-        st.session_state.play_hiss = False
         st.rerun()
 
     st.write("---")
@@ -100,9 +134,8 @@ with col1:
     if btn_pump:
         st.session_state.stage = "pumping"
         
-        # Вбудовуємо плеєр насоса один раз. Він грає незалежно від циклу Python!
-        if pump_b64:
-            st.markdown(f'<audio autoplay><source src="data:audio/mp3;base64,{pump_b64}" type="audio/mp3"></audio>', unsafe_allow_html=True)
+        # Миттєвий запуск звуку через JavaScript тригер
+        st.components.v1.html("<script>window.playPump();</script>", height=0, width=0)
         
         steps = 50 
         progress_bar = st.progress(0)
@@ -124,8 +157,11 @@ with col1:
                     st.metric(label="⚖️ Електронні ваги (m)", value=f"{st.session_state.m_curr:.3f} г")
                 with v_col:
                     st.metric(label="📉 Вакуумметр (V_%)", value=f"{st.session_state.vacuum_curr:.1f} %")
-                st.info(f"🏛️ **Барометр на стіні ($P_{{атм}}$):** {P_atm_true:.0f} Pa")
+                st.info(f"🏛️ **Барометр на стіні ($P_{{атм}}$):** {P_atm_true:.0f} Па")
                 st.caption(f"🌡️ **Кімнатний термометр (T):** {T_kelvin:.2f} К ({T_celsius} °C)")
+        
+        # Вимикаємо звук насоса по закінченню 5 секунд
+        st.components.v1.html("<script>window.stopPump();</script>", height=0, width=0)
         
         st.session_state.stage = "ready_to_fill"
         st.session_state.vlab_data.append({
@@ -144,7 +180,9 @@ with col1:
     btn_fill = st.button("📥 Впустити порцію повітря (відкрити клапан)", disabled=is_fill_disabled)
     
     if btn_fill:
-        st.session_state.play_hiss = True  # Тригер для відтворення "пшику"
+        # Миттєвий запуск "пшику" через JavaScript тригер при кожному кліку
+        st.components.v1.html("<script>window.playHiss();</script>", height=0, width=0)
+        
         vac_step = np.random.uniform(12.0, 16.0)
         next_vacuum = st.session_state.vacuum_curr - vac_step
         
@@ -168,13 +206,7 @@ with col1:
         })
         st.rerun()
 
-# Одноразове програвання "пшику" повітря при оновленні сторінки
-if st.session_state.play_hiss:
-    if hiss_b64:
-        st.markdown(f'<audio autoplay><source src="data:audio/mp3;base64,{hiss_b64}" type="audio/mp3"></audio>', unsafe_allow_html=True)
-    st.session_state.play_hiss = False  # Скидаємо тригер
-
-# Відображення приладів
+# Статичне відображення приладів
 with instruments_placeholder.container():
     m_col, v_col = st.columns(2)
     with m_col:
