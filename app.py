@@ -47,13 +47,13 @@ if "trigger_hiss_sound" not in st.session_state:
 # Встановлюємо прихований сид для унікальності досвіду
 np.random.seed(st.session_state.random_seed)
 
-# --- АУДІО-РУШІЙ ДЛЯ БРАУЗЕРА ---
+# --- БЕЗДОГАННИЙ АУДІО-РУШІЙ ДЛЯ БРАУЗЕРА ---
 pump_js_trigger = "true" if st.session_state.trigger_pump_sound else "false"
 hiss_js_trigger = "true" if st.session_state.trigger_hiss_sound else "false"
 
 audio_html = f"""
 <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 5px solid #ff4b4b;">
-    <small>🔊 <b>Аудіо-супровід стенду:</b> Для активації звуків натисніть у будь-якому місці цієї сірої плашки один раз після завантаження сторінки.</small>
+    <small>🔊 <b>Аудіо-супровід стенду:</b> Для активації звуків натисніть у будь-какому місці цієї сірої плашки один раз після завантаження сторінки.</small>
 </div>
 <script>
     if (!window.audioPumpObj) window.audioPumpObj = new Audio("data:audio/mp3;base64,{pump_b64 or ''}");
@@ -62,7 +62,7 @@ audio_html = f"""
     if ({pump_js_trigger} && window.audioPumpObj) {{
         window.audioPumpObj.currentTime = 0;
         window.audioPumpObj.play().catch(e => console.log(e));
-        // Насос працює сумарно 5.5 секунд (0.5с прогрів + 5с анімація)
+        // Зупиняємо насос через 5.5 секунд
         setTimeout(function() {{
             window.audioPumpObj.pause();
             window.audioPumpObj.currentTime = 0;
@@ -76,7 +76,6 @@ audio_html = f"""
 """
 st.components.v1.html(audio_html, height=65)
 
-# Скидаємо тригери відразу після генерації HTML-скрипту
 st.session_state.trigger_pump_sound = False
 st.session_state.trigger_hiss_sound = False
 
@@ -130,27 +129,31 @@ with col1:
     
     if btn_pump:
         st.session_state.stage = "pumping"
-        st.session_state.trigger_pump_sound = True  # Даємо команду на старт звуку
+        st.session_state.trigger_pump_sound = True  # Сигнал браузеру включити звук
         st.rerun()
 
     if st.session_state.stage == "pumping":
-        # Психологічна пауза: 0.5 секунди гуде ТІЛЬКИ насос, стрілки ще не рушили
-        time.sleep(0.50)
-        
-        steps = 50 
+        steps = 55  # 55 кроків по 0.1 сек = 5.5 секунд загального часу
         progress_bar = st.progress(0)
         
         for i in range(1, steps + 1):
             time.sleep(0.10)
-            factor = i / float(steps)
             
-            st.session_state.vacuum_curr = max_vacuum_possible * (1 - np.exp(-3 * factor)) / (1 - np.exp(-3))
-            p_dynamic = P_atm_true * (1 - st.session_state.vacuum_curr / 100.0)
-            m_air_dynamic = (p_dynamic * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
-            st.session_state.m_curr = m_glass_true + m_air_dynamic * 1000.0 + np.random.normal(0, 0.001)
+            # Перші 5 кроків (0.5 сек) насос ТІЛЬКИ ГУДЕ. Показання не змінюються.
+            if i <= 5:
+                factor = 0.0
+                progress_bar.progress(0)
+            else:
+                # Наступні 50 кроків (5 сек) плавно змінюємо показання
+                factor = (i - 5) / 50.0
+                progress_bar.progress(int(factor * 100))
+                
+                st.session_state.vacuum_curr = max_vacuum_possible * (1 - np.exp(-3 * factor)) / (1 - np.exp(-3))
+                p_dynamic = P_atm_true * (1 - st.session_state.vacuum_curr / 100.0)
+                m_air_dynamic = (p_dynamic * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
+                st.session_state.m_curr = m_glass_true + m_air_dynamic * 1000.0 + np.random.normal(0, 0.001)
             
-            progress_bar.progress(int(factor * 100))
-            
+            # Прилади стабільно відображаються, картинка НЕ стрибає
             with instruments_placeholder.container():
                 m_col, v_col = st.columns(2)
                 with m_col:
@@ -177,11 +180,7 @@ with col1:
     btn_fill = st.button("📥 Впустити порцію повітря (відкрити клапан)", disabled=is_fill_disabled)
     
     if btn_fill:
-        st.session_state.trigger_hiss_sound = True  # Даємо команду на "пшик"
-        
-        # Психологічна пауза: спочатку чуємо чіткий "пшик", повітря залітає в колбу (0.4 сек)
-        # Це гарантує, що звук встигне програтися до перезапуску сторінки!
-        time.sleep(0.40)
+        st.session_state.trigger_hiss_sound = True  # Сигнал браузеру на миттєвий "пшик"
         
         vac_step = np.random.uniform(12.0, 16.0)
         next_vacuum = st.session_state.vacuum_curr - vac_step
@@ -206,7 +205,7 @@ with col1:
         })
         st.rerun()
 
-# Статичне відображення приладів
+# Статичне відображення приладів за відсутності активних циклів
 if st.session_state.stage != "pumping":
     with instruments_placeholder.container():
         m_col, v_col = st.columns(2)
