@@ -39,38 +39,47 @@ if "m_start" not in st.session_state:
     st.session_state.m_start = None  # Еталонна початкова маса
 if "random_seed" not in st.session_state:
     st.session_state.random_seed = int(time.time() * 1000) % 100000
+if "audio_on" not in st.session_state:
+    st.session_state.audio_on = False
+
 
 # Встановлюємо прихований сид для унікальності досвіду
 np.random.seed(st.session_state.random_seed)
 
 # --- АУДІО-РУШІЙ ТА ІН'ЄКЦІЯ В КНОПКИ ---
-# Цей скрипт прив'язує миттєвий звук прямо до подій натискання на кнопки на стороні браузера
+# Перемикач аудіосупроводу в стилі Windows
+icon = "🔊" if st.session_state.audio_on else "🔇"
+st.session_state.audio_on = st.toggle(
+    label=f"{icon} Звуковий супровід стенду", 
+    value=st.session_state.audio_on
+)
+
+# Передаємо стан тумблера в JavaScript-рушій кнопок
+audio_is_active = "true" if st.session_state.audio_on else "false"
+
 audio_html = f"""
-<div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 5px solid #ff4b4b;">
-    <small>🔊 <b>Аудіо-супровід стенду:</b> Для активації звуків натисніть у будь-якому місці цієї сірої плашки один раз після завантаження сторінки.</small>
-</div>
 <script>
     if (!window.audioPumpObj) window.audioPumpObj = new Audio("data:audio/mp3;base64,{pump_b64 or ''}");
     if (!window.audioHissObj) window.audioHissObj = new Audio("data:audio/mp3;base64,{hiss_b64 or ''}");
 
     window.clickPlayPump = function() {{
-        if (window.audioPumpObj) {{
+        // Звук грає тільки якщо тумблер увімкнено (active)
+        if ({audio_is_active} && window.audioPumpObj) {{
             window.audioPumpObj.currentTime = 0;
             window.audioPumpObj.play().catch(e => console.log(e));
             setTimeout(function() {{
                 if(window.audioPumpObj) {{ window.audioPumpObj.pause(); window.audioPumpObj.currentTime = 0; }}
-            }}, 6500); // ГУДЕ 6.5 секунд (1.5с розгін + 5с анімація)
+            }}, 5400); // Синхронізовано під розгін 0.4с + 5с анімації
         }}
     }};
 
     window.clickPlayHiss = function() {{
-        if (window.audioHissObj) {{
+        if ({audio_is_active} && window.audioHissObj) {{
             window.audioHissObj.currentTime = 0;
             window.audioHissObj.play().catch(e => console.log(e));
         }}
     }};
 
-    // Функція пошуку кнопок Streamlit та додавання до них миттєвого звуку безпосередньо в браузері
     function ИньекцияЗвука() {{
         const buttons = window.parent.document.querySelectorAll("button");
         buttons.forEach(btn => {{
@@ -85,12 +94,11 @@ audio_html = f"""
             }}
         }});
     }}
-
-    // Запускаємо постійний моніторинг появи кнопок
     setInterval(ИньекцияЗвука, 300);
 </script>
 """
-st.components.v1.html(audio_html, height=65)
+st.components.v1.html(audio_html, height=0, width=0)
+
 
 st.subheader("🖥️ Інтерактивний лабораторний стенд")
 col1, col2 = st.columns(2)
