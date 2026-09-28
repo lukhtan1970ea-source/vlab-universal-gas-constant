@@ -8,20 +8,26 @@ import base64
 # Константи
 R_TRUE = 8.314  # Дж/(моль*К)
 M_AIR = 29.0e-3  # Молярна маса повітря, кг/моль
-# Функція для прихованого відтворення аудіо
-def play_audio(file_path):
+# Оптимальне зчитування аудіо з пам'яті (щоб прилади не гальмували)
+@st.cache_data
+def load_audio_b64(file_path):
     try:
         with open(file_path, "rb") as f:
-            data = f.read()
-            b64 = base64.b64encode(data).decode()
-            md = f"""
-                <audio autoplay style="display:none;">
-                <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
-                </audio>
-                """
-            st.markdown(md, unsafe_allow_html=True)
+            return base64.b64encode(f.read()).decode()
     except FileNotFoundError:
-        pass  # Якщо файлів немає, лаба працює без звуку
+        return None
+
+# Функція для відтворення
+def play_audio(file_path):
+    b64 = load_audio_b64(file_path)
+    if b64:
+        md = f"""
+            <audio autoplay style="display:none;">
+            <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+            </audio>
+            """
+        st.markdown(md, unsafe_allow_html=True)
+
 
 st.set_page_config(page_title="Лабораторна робота: Визначення R", layout="wide")
 
