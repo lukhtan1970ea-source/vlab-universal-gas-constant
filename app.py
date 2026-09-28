@@ -90,6 +90,7 @@ st.components.v1.html(audio_html, height=65)
 
 st.subheader("🖥️ Інтерактивний лабораторний стенд")
 col1, col2 = st.columns(2)
+
 with col2:
     st.write("### 📺 Показання приладів у лабораторії")
     instruments_placeholder = st.empty()
