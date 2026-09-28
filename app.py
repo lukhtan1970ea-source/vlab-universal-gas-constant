@@ -48,10 +48,17 @@ np.random.seed(st.session_state.random_seed)
 
 # --- АУДІО-РУШІЙ ТА ІН'ЄКЦІЯ В КНОПКИ ---
 # Перемикач аудіосупроводу в стилі Windows
+# Перемикач аудіосупроводу в стилі Windows (з виправленим рассинхроном)
+if "audio_on" not in st.session_state:
+    st.session_state.audio_on = False
+
+# Спочатку беремо актуальний стан, щоб іконка не відставала
 icon = "🔊" if st.session_state.audio_on else "🔇"
-st.session_state.audio_on = st.toggle(
+
+# Використовуємо key="audio_on", щоб Streamlit оновлював стан синхронно
+st.toggle(
     label=f"{icon} Звуковий супровід стенду", 
-    value=st.session_state.audio_on
+    key="audio_on"
 )
 
 # Передаємо стан тумблера в JavaScript-рушій кнопок
@@ -63,13 +70,12 @@ audio_html = f"""
     if (!window.audioHissObj) window.audioHissObj = new Audio("data:audio/mp3;base64,{hiss_b64 or ''}");
 
     window.clickPlayPump = function() {{
-        // Звук грає тільки якщо тумблер увімкнено (active)
         if ({audio_is_active} && window.audioPumpObj) {{
             window.audioPumpObj.currentTime = 0;
             window.audioPumpObj.play().catch(e => console.log(e));
             setTimeout(function() {{
                 if(window.audioPumpObj) {{ window.audioPumpObj.pause(); window.audioPumpObj.currentTime = 0; }}
-            }}, 5400); // Синхронізовано під розгін 0.4с + 5с анімації
+            }}, 5400); // 0.4с розгін + 5с анімації
         }}
     }};
 
@@ -98,6 +104,7 @@ audio_html = f"""
 </script>
 """
 st.components.v1.html(audio_html, height=0, width=0)
+
 
 
 st.subheader("🖥️ Інтерактивний лабораторний стенд")
