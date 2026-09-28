@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import time
+import base64
 
 # Константи
 R_TRUE = 8.314  # Дж/(моль*К)
@@ -12,6 +13,18 @@ st.set_page_config(page_title="Лабораторна робота: Визнач
 
 st.title("🔬 Віртуальна лабораторна робота")
 st.header("Визначення універсальної газової сталої методом екстраполяції")
+
+# Оптимальне зчитування аудіо з пам'яті (кешування)
+@st.cache_data
+def load_audio_b64(file_path):
+    try:
+        with open(file_path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except FileNotFoundError:
+        return None
+
+pump_b64 = load_audio_b64("pump.mp3")
+hiss_b64 = load_audio_b64("hiss.mp3")
 
 # Ініціалізація змінних сесії (Session State)
 if "stage" not in st.session_state:
@@ -26,14 +39,48 @@ if "m_start" not in st.session_state:
     st.session_state.m_start = None  # Еталонна початкова маса
 if "random_seed" not in st.session_state:
     st.session_state.random_seed = int(time.time() * 1000) % 100000
+if "trigger_pump_sound" not in st.session_state:
+    st.session_state.trigger_pump_sound = False
+if "trigger_hiss_sound" not in st.session_state:
+    st.session_state.trigger_hiss_sound = False
 
 # Встановлюємо прихований сид для унікальності досвіду
 np.random.seed(st.session_state.random_seed)
 
+# --- АУДІО-РУШІЙ ДЛЯ БРАУЗЕРА ---
+pump_js_trigger = "true" if st.session_state.trigger_pump_sound else "false"
+hiss_js_trigger = "true" if st.session_state.trigger_hiss_sound else "false"
+
+audio_html = f"""
+<div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 5px solid #ff4b4b;">
+    <small>🔊 <b>Аудіо-супровід стенду:</b> Для активації звуків натисніть у будь-якому місці цієї плашки один раз після завантаження сторінки.</small>
+</div>
+<script>
+    if (!window.audioPumpObj) window.audioPumpObj = new Audio("data:audio/mp3;base64,{pump_b64 or ''}");
+    if (!window.audioHissObj) window.audioHissObj = new Audio("data:audio/mp3;base64,{hiss_b64 or ''}");
+
+    if ({pump_js_trigger} && window.audioPumpObj) {{
+        window.audioPumpObj.currentTime = 0;
+        window.audioPumpObj.play().catch(e => console.log(e));
+        setTimeout(function() {{
+            window.audioPumpObj.pause();
+            window.audioPumpObj.currentTime = 0;
+        }}, 5000);
+    }}
+    if ({hiss_js_trigger} && window.audioHissObj) {{
+        window.audioHissObj.currentTime = 0;
+        window.audioHissObj.play().catch(e => console.log(e));
+    }}
+</script>
+"""
+st.components.v1.html(audio_html, height=65)
+
+# Скидаємо тригери відразу після генерації HTML-скрипту
+st.session_state.trigger_pump_sound = False
+st.session_state.trigger_hiss_sound = False
+
 st.subheader("🖥️ Інтерактивний лабораторний стенд")
-
 col1, col2 = st.columns(2)
-
 with col2:
     st.write("### 📺 Показання приладів у лабораторії")
     instruments_placeholder = st.empty()
@@ -78,21 +125,13 @@ with col1:
     
     # --- КРОК 1: ВІДКАЧУВАННЯ ---
     st.write("**Крок 1: Попереднє відкачування повітря з колби**")
-    
-    # Стандартний аудіоплеєр для насоса (показується тільки під час або після відкачування)
-    if st.session_state.stage == "pumping" or st.session_state.stage == "ready_to_fill":
-        try:
-            st.audio("pump.mp3", format="audio/mp3", autoplay=True)
-        except Exception:
-            pass
-
     btn_pump = st.button("🚀 УВІМКНУТИ ВАКУУМНИЙ НАСОС", disabled=(st.session_state.stage != "init"))
     
     if btn_pump:
         st.session_state.stage = "pumping"
-        st.rerun()  # Перезапускаємо, щоб спочатку змонтувати аудіоплеєр з autoplay=True
+        st.session_state.trigger_pump_sound = True  # Активуємо звук насоса
+        st.rerun()
 
-    # Якщо ми в стані pumping, крутимо цикл анімації приладів
     if st.session_state.stage == "pumping":
         steps = 50 
         progress_bar = st.progress(0)
@@ -134,6 +173,7 @@ with col1:
     btn_fill = st.button("📥 Впустити порцію повітря (відкрити клапан)", disabled=is_fill_disabled)
     
     if btn_fill:
+        st.session_state.trigger_hiss_sound = True  # Активуємо "пшик" клапана
         vac_step = np.random.uniform(12.0, 16.0)
         next_vacuum = st.session_state.vacuum_curr - vac_step
         
@@ -155,16 +195,9 @@ with col1:
             "Вакуум V (%)": round(next_vacuum, 1),
             "Маса балона m (г)": round(st.session_state.m_curr, 3)
         })
-        
-        # Виводимо "пшик" один раз прямо в момент кліку на кнопку напуску
-        try:
-            st.audio("hiss.mp3", format="audio/mp3", autoplay=True)
-        except Exception:
-            pass
-            
         st.rerun()
 
-# Статичне відображення приладів за відсутності активних циклів
+# Статичне відображення приладів
 if st.session_state.stage != "pumping":
     with instruments_placeholder.container():
         m_col, v_col = st.columns(2)
