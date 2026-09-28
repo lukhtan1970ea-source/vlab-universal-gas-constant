@@ -44,7 +44,6 @@ if "random_seed" not in st.session_state:
 np.random.seed(st.session_state.random_seed)
 
 # --- АУДІО-РУШІЙ ТА ІН'ЄКЦІЯ В КНОПКИ ---
-# Цей скрипт прив'язує миттєвий звук прямо до подій натискання на кнопки на стороні браузера
 audio_html = f"""
 <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 5px solid #ff4b4b;">
     <small>🔊 <b>Аудіо-супровід стенду:</b> Для активації звуків натисніть у будь-якому місці цієї сірої плашки один раз після завантаження сторінки.</small>
@@ -59,7 +58,7 @@ audio_html = f"""
             window.audioPumpObj.play().catch(e => console.log(e));
             setTimeout(function() {{
                 if(window.audioPumpObj) {{ window.audioPumpObj.pause(); window.audioPumpObj.currentTime = 0; }}
-            }}, 6500); // ГУДЕ 6.5 секунд (1.5с розгін + 5с анімація)
+            }}, 5400); // ГУДЕ 5.4 секунди (0.4с розгін + 5с анімація)
         }}
     }};
 
@@ -70,7 +69,6 @@ audio_html = f"""
         }}
     }};
 
-    // Функція пошуку кнопок Streamlit та додавання до них миттєвого звуку безпосередньо в браузері
     function ИньекцияЗвука() {{
         const buttons = window.parent.document.querySelectorAll("button");
         buttons.forEach(btn => {{
@@ -85,8 +83,6 @@ audio_html = f"""
             }}
         }});
     }}
-
-    // Запускаємо постійний моніторинг появи кнопок
     setInterval(ИньекцияЗвука, 300);
 </script>
 """
@@ -145,19 +141,19 @@ with col1:
         st.rerun()
 
     if st.session_state.stage == "pumping":
-        steps = 65  # 15 кроків розгону + 50 кроків анімації = 6.5 секунд загального часу
+        steps = 54  # 4 кроки розгону + 50 кроків анімації = 5.4 секунд загального часу
         progress_bar = st.progress(0)
         
         for i in range(1, steps + 1):
             time.sleep(0.10)
             
-            # Перші 15 кроків (1.5 секунди) насос ТІЛЬКИ ГУДЕ у браузері, стрілки на місці
-            if i <= 15:
+            # Лише перші 4 кроки (0.4 секунди) насос гуде, стрілки на місці
+            if i <= 4:
                 factor = 0.0
                 progress_bar.progress(0)
             else:
                 # Наступні 50 кроків (5 секунд) плавно знижуємо тиск
-                factor = (i - 15) / 50.0
+                factor = (i - 4) / 50.0
                 progress_bar.progress(int(factor * 100))
                 
                 st.session_state.vacuum_curr = max_vacuum_possible * (1 - np.exp(-3 * factor)) / (1 - np.exp(-3))
@@ -215,7 +211,7 @@ with col1:
         })
         st.rerun()
 
-# Статичне відображення приладів
+# Статичне відображення приладів за відсутності активних циклів
 if st.session_state.stage != "pumping":
     with instruments_placeholder.container():
         m_col, v_col = st.columns(2)
