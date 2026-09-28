@@ -39,45 +39,58 @@ if "m_start" not in st.session_state:
     st.session_state.m_start = None  # Еталонна початкова маса
 if "random_seed" not in st.session_state:
     st.session_state.random_seed = int(time.time() * 1000) % 100000
-if "trigger_pump_sound" not in st.session_state:
-    st.session_state.trigger_pump_sound = False
-if "trigger_hiss_sound" not in st.session_state:
-    st.session_state.trigger_hiss_sound = False
 
 # Встановлюємо прихований сид для унікальності досвіду
 np.random.seed(st.session_state.random_seed)
 
-# --- БЕЗДОГАННИЙ АУДІО-РУШІЙ ДЛЯ БРАУЗЕРА ---
-pump_js_trigger = "true" if st.session_state.trigger_pump_sound else "false"
-hiss_js_trigger = "true" if st.session_state.trigger_hiss_sound else "false"
-
+# --- АУДІО-РУШІЙ ТА ІН'ЄКЦІЯ В КНОПКИ ---
+# Цей скрипт прив'язує миттєвий звук прямо до подій натискання на кнопки на стороні браузера
 audio_html = f"""
 <div style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 5px solid #ff4b4b;">
-    <small>🔊 <b>Аудіо-супровід стенду:</b> Для активації звуків натисніть у будь-какому місці цієї сірої плашки один раз після завантаження сторінки.</small>
+    <small>🔊 <b>Аудіо-супровід стенду:</b> Для активації звуків натисніть у будь-якому місці цієї сірої плашки один раз після завантаження сторінки.</small>
 </div>
 <script>
     if (!window.audioPumpObj) window.audioPumpObj = new Audio("data:audio/mp3;base64,{pump_b64 or ''}");
     if (!window.audioHissObj) window.audioHissObj = new Audio("data:audio/mp3;base64,{hiss_b64 or ''}");
 
-    if ({pump_js_trigger} && window.audioPumpObj) {{
-        window.audioPumpObj.currentTime = 0;
-        window.audioPumpObj.play().catch(e => console.log(e));
-        // Зупиняємо насос через 5.5 секунд
-        setTimeout(function() {{
-            window.audioPumpObj.pause();
+    window.clickPlayPump = function() {{
+        if (window.audioPumpObj) {{
             window.audioPumpObj.currentTime = 0;
-        }}, 5500);
+            window.audioPumpObj.play().catch(e => console.log(e));
+            setTimeout(function() {{
+                if(window.audioPumpObj) {{ window.audioPumpObj.pause(); window.audioPumpObj.currentTime = 0; }}
+            }}, 6500); // ГУДЕ 6.5 секунд (1.5с розгін + 5с анімація)
+        }}
+    }};
+
+    window.clickPlayHiss = function() {{
+        if (window.audioHissObj) {{
+            window.audioHissObj.currentTime = 0;
+            window.audioHissObj.play().catch(e => console.log(e));
+        }}
+    }};
+
+    // Функція пошуку кнопок Streamlit та додавання до них миттєвого звуку безпосередньо в браузері
+    function ИньекцияЗвука() {{
+        const buttons = window.parent.document.querySelectorAll("button");
+        buttons.forEach(btn => {{
+            const txt = btn.innerText || "";
+            if (txt.includes("УВІМКНУТИ ВАКУУМНИЙ НАСОС") && !btn.hasPumpSound) {{
+                btn.addEventListener("click", window.clickPlayPump);
+                btn.hasPumpSound = true;
+            }}
+            if (txt.includes("Впустити порцію повітря") && !btn.hasHissSound) {{
+                btn.addEventListener("click", window.clickPlayHiss);
+                btn.hasHissSound = true;
+            }}
+        }});
     }}
-    if ({hiss_js_trigger} && window.audioHissObj) {{
-        window.audioHissObj.currentTime = 0;
-        window.audioHissObj.play().catch(e => console.log(e));
-    }}
+
+    // Запускаємо постійний моніторинг появи кнопок
+    setInterval(ИньекцияЗвука, 300);
 </script>
 """
 st.components.v1.html(audio_html, height=65)
-
-st.session_state.trigger_pump_sound = False
-st.session_state.trigger_hiss_sound = False
 
 st.subheader("🖥️ Інтерактивний лабораторний стенд")
 col1, col2 = st.columns(2)
@@ -129,23 +142,22 @@ with col1:
     
     if btn_pump:
         st.session_state.stage = "pumping"
-        st.session_state.trigger_pump_sound = True  # Сигнал браузеру включити звук
         st.rerun()
 
     if st.session_state.stage == "pumping":
-        steps = 55  # 55 кроків по 0.1 сек = 5.5 секунд загального часу
+        steps = 65  # 15 кроків розгону + 50 кроків анімації = 6.5 секунд загального часу
         progress_bar = st.progress(0)
         
         for i in range(1, steps + 1):
             time.sleep(0.10)
             
-            # Перші 5 кроків (0.5 сек) насос ТІЛЬКИ ГУДЕ. Показання не змінюються.
-            if i <= 5:
+            # Перші 15 кроків (1.5 секунди) насос ТІЛЬКИ ГУДЕ у браузері, стрілки на місці
+            if i <= 15:
                 factor = 0.0
                 progress_bar.progress(0)
             else:
-                # Наступні 50 кроків (5 сек) плавно змінюємо показання
-                factor = (i - 5) / 50.0
+                # Наступні 50 кроків (5 секунд) плавно знижуємо тиск
+                factor = (i - 15) / 50.0
                 progress_bar.progress(int(factor * 100))
                 
                 st.session_state.vacuum_curr = max_vacuum_possible * (1 - np.exp(-3 * factor)) / (1 - np.exp(-3))
@@ -153,7 +165,7 @@ with col1:
                 m_air_dynamic = (p_dynamic * V_m3 * M_AIR) / (R_TRUE * T_kelvin)
                 st.session_state.m_curr = m_glass_true + m_air_dynamic * 1000.0 + np.random.normal(0, 0.001)
             
-            # Прилади стабільно відображаються, картинка НЕ стрибає
+            # Оновлюємо табло приладів без стрибків екрана
             with instruments_placeholder.container():
                 m_col, v_col = st.columns(2)
                 with m_col:
@@ -180,8 +192,6 @@ with col1:
     btn_fill = st.button("📥 Впустити порцію повітря (відкрити клапан)", disabled=is_fill_disabled)
     
     if btn_fill:
-        st.session_state.trigger_hiss_sound = True  # Сигнал браузеру на миттєвий "пшик"
-        
         vac_step = np.random.uniform(12.0, 16.0)
         next_vacuum = st.session_state.vacuum_curr - vac_step
         
@@ -205,7 +215,7 @@ with col1:
         })
         st.rerun()
 
-# Статичне відображення приладів за відсутності активних циклів
+# Статичне відображення приладів
 if st.session_state.stage != "pumping":
     with instruments_placeholder.container():
         m_col, v_col = st.columns(2)
